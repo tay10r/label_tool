@@ -4,6 +4,8 @@
 
 #include <algorithm>
 
+#include <iostream>
+
 exporter::exporter(const project& prj)
   : m_project(prj)
 {
@@ -22,12 +24,19 @@ exporter::process_next_frame()
 
   const auto& f = m_project.frames.at(m_image_index);
 
+  if (!f.class_id.has_value()) {
+    move_to_next_frame();
+    return;
+  }
+
+  std::cout << "frame " << m_image_index << " of " << m_project.frames.size() << std::endl;
+
   int w = 0;
   int h = 0;
 
   auto* data = stbi_load(f.path.string().c_str(), &w, &h, nullptr, 3);
   if (!data) {
-    m_image_index++;
+    move_to_next_frame();
     return;
   }
 
@@ -35,11 +44,7 @@ exporter::process_next_frame()
 
   stbi_image_free(data);
 
-  m_image_index++;
-
-  if (m_image_index == m_project.frames.size()) {
-    finalize();
-  }
+  move_to_next_frame();
 }
 
 void
@@ -75,3 +80,13 @@ exporter::crop_and_process_frame(const project::frame& f, const std::uint8_t* da
 
   process_frame(f, tmp.data(), tmp_w, tmp_h);
 }
+
+void
+exporter::move_to_next_frame()
+{
+  m_image_index++;
+  if (m_image_index == m_project.frames.size()) {
+    finalize();
+  }
+}
+

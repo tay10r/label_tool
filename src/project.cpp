@@ -50,7 +50,7 @@ project::load(const std::filesystem::path& p)
 {
   const auto root = YAML::LoadFile(p);
 
-  image_directory_path = root["image_directory"].as<std::string>();
+  next_frame_id = root["next_frame_id"].as<int>();
 
   decode_bbox(root["crop_bbox"], crop_bbox);
 
@@ -62,11 +62,30 @@ project::load(const std::filesystem::path& p)
   }
 
   for (const auto& frame_node : root["frames"]) {
+
     frame f;
-    f.class_id = frame_node["class_id"].as<int>();
+
+    if (frame_node["class_id"]) {
+      f.class_id = frame_node["class_id"].as<int>();
+    }
+
+    f.frame_id = frame_node["id"].as<int>();
+
     f.path = frame_node["path"].as<std::string>();
+
     frames.emplace_back(std::move(f));
   }
+
+  widgets.clear();
+
+  for (const auto& widget_node : root["widgets"]) {
+
+    widget w{ widget_node["name"].as<std::string>(), widget_node["visible"].as<bool>() };
+
+    widgets.emplace_back(std::move(w));
+  }
+
+  notes = root["notes"].as<std::string>();
 }
 
 void
@@ -74,7 +93,7 @@ project::save(const std::filesystem::path& p) const
 {
   YAML::Node root;
 
-  root["image_directory"] = image_directory_path.string();
+  root["next_frame_id"] = next_frame_id;
 
   root["crop_bbox"] = encode_bbox(crop_bbox);
 
@@ -89,12 +108,31 @@ project::save(const std::filesystem::path& p) const
 
   std::vector<YAML::Node> frame_nodes;
   for (const auto& f : frames) {
+
     YAML::Node node;
+
     node["path"] = f.path.string();
-    node["class_id"] = f.class_id;
+
+    if (f.class_id) {
+      node["class_id"] = f.class_id.value();
+    }
+
+    node["id"] = f.frame_id;
+
     frame_nodes.emplace_back(std::move(node));
   }
   root["frames"] = frame_nodes;
+
+  std::vector<YAML::Node> widget_nodes;
+  for (const auto& w : widgets) {
+    YAML::Node widget_node;
+    widget_node["name"] = w.name;
+    widget_node["visible"] = w.visible;
+    widget_nodes.emplace_back(std::move(widget_node));
+  }
+  root["widgets"] = widget_nodes;
+
+  root["notes"] = notes;
 
   std::ofstream file(p);
   file << root;
@@ -119,11 +157,50 @@ project::get_or_create_frame(const std::string& path) -> frame*
     frames.begin(), frames.end(), path, [](const auto& a, const auto& b) -> bool { return a.path < b; });
 
   if ((it == frames.end()) || (it->path != path)) {
+
     frames.emplace_back(frame{ path, 0 });
+
     it = std::next(frames.begin(), frames.size() - 1);
   }
 
   std::sort(frames.begin(), frames.end(), [](const auto& a, const auto& b) -> bool { return a.path < b.path; });
 
   return &(*it);
+}
+
+void
+project::import_image(const std::filesystem::path& p, bool sort)
+{
+  auto it = std::lower_bound(
+    frames.begin(), frames.end(), p, [](const frame& f, const std::filesystem::path& p) -> bool { return f.path < p; });
+
+  if ((it == frames.end()) || (it->path != p)) {
+
+    frames.emplace_back(frame{ p, /* class id */ std::nullopt, next_frame_id++ });
+
+    if (sort) {
+      std::sort(frames.begin(), frames.end());
+    }
+  }
+}
+
+void
+project::import_images(const std::vector<std::filesystem::path>& paths)
+{
+  for (const auto& p : paths) {
+    import_image(p, /* sort */ false);
+  }
+
+  std::sort(frames.begin(), frames.end());
+}
+
+void
+project::import_image_directory(const std::filesystem::path& p)
+{
+  for (const auto& entry : std::filesystem::directory_iterator(p)) {
+    const std::string ext = entry.path().extension();
+    if ((ext == ".png") || (ext == ".bmp") || (ext == ".jpg")) {
+      import_image(entry.path());
+    }
+  }
 }

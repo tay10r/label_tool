@@ -24,13 +24,17 @@ generate_path(const std::size_t idx, std::size_t num_images)
 void
 custom_exporter::process_frame(const project::frame& f, const std::uint8_t* rgb, std::int32_t w, std::int32_t h)
 {
-  const auto path = generate_path(get_image_index(), get_project()->frames.size());
+  if (!f.class_id.has_value()) {
+    return;
+  }
+
+  const auto path = generate_path(m_output_entries.size(), get_project()->frames.size());
 
   stbi_write_png(path.c_str(), w, h, 3, rgb, w * 3);
 
   output_entry entry;
 
-  entry.class_id = f.class_id;
+  entry.class_id = f.class_id.value();
 
   m_output_entries.emplace_back(std::move(entry));
 }

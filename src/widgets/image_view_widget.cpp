@@ -1,27 +1,29 @@
-#include "image_viewer.hpp"
+#include "image_view_widget.hpp"
 
 #include <implot.h>
 
 #include <array>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include <GLES2/gl2.h>
 
-#include "project.hpp"
+#include "../edit_moderator.hpp"
+#include "../project.hpp"
 
-#include "deps/stb_image.h"
+#include "../deps/stb_image.h"
 
 namespace {
 
-class image_viewer_impl;
+class image_view_widget_impl;
 
 template<typename Value>
 struct callback final
 {
-  image_viewer_impl* self{ nullptr };
+  image_view_widget_impl* self{ nullptr };
 
-  void (*func)(image_viewer_impl&, const Value& value){ nullptr };
+  void (*func)(image_view_widget_impl&, const Value& value){ nullptr };
 };
 
 class tool
@@ -42,7 +44,7 @@ class tool_base : public tool
 public:
   using callback_type = callback<Value>;
 
-  tool_base(image_viewer_impl* self, void (*func)(image_viewer_impl&, const Value& value))
+  tool_base(image_view_widget_impl* self, void (*func)(image_view_widget_impl&, const Value& value))
     : m_callback{ self, func }
   {
   }
@@ -115,10 +117,10 @@ public:
   void render_to_plot(float x, float y) override {}
 };
 
-class image_viewer_impl final : public image_viewer
+class image_view_widget_impl final : public image_view_widget
 {
 public:
-  image_viewer_impl(image_viewer_observer* observer)
+  image_view_widget_impl(image_view_observer* observer)
     : m_observer(observer)
   {
     glGenTextures(1, &m_texture);
@@ -131,13 +133,13 @@ public:
     m_tools.emplace_back("Label", new label_tool(this, on_label));
   }
 
-  ~image_viewer_impl() { glDeleteTextures(1, &m_texture); }
+  ~image_view_widget_impl() { glDeleteTextures(1, &m_texture); }
 
-  void render(project& prj) override
+  void render(edit_moderator<project>& proj) override
   {
     render_tools();
 
-    render_frame_label_selection(prj);
+    render_frame_label_selection(proj);
 
     if (!ImPlot::BeginPlot("Image", ImVec2(-1, -1), ImPlotFlags_Crosshairs)) {
       return;
@@ -147,9 +149,9 @@ public:
 
     ImPlot::PlotImage("##Selected Image", texture_id, ImPlotPoint(0, 0), ImPlotPoint(1, 1));
 
-    if (!prj.crop_bbox.empty()) {
-      const auto v0 = prj.crop_bbox.min;
-      const auto v1 = prj.crop_bbox.max;
+    if (!proj.get().crop_bbox.empty()) {
+      const auto v0 = proj.get().crop_bbox.min;
+      const auto v1 = proj.get().crop_bbox.max;
       std::array<float, 5> x{ v0[0], v0[0], v1[0], v1[0], v0[0] };
       std::array<float, 5> y{ v0[1], v1[1], v1[1], v0[1], v0[1] };
       ImPlot::PlotLine("Crop BBox", x.data(), y.data(), 5);
@@ -169,53 +171,88 @@ public:
     ImPlot::EndPlot();
   }
 
+  void on_project_modification(const project& proj) override
+  {
+    //
+  }
+
   void open_image(const char* path, int class_id) override
   {
-    m_path = path;
-    m_class_id = class_id;
-
     int w = 0;
     int h = 0;
     auto* data = stbi_load(path, &w, &h, nullptr, 3);
 
-    glBindTexture(GL_TEXTURE_2D, m_texture);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
-
-    glBindTexture(GL_TEXTURE_2D, 0);
+    open_image(path, data, w, h, class_id);
 
     if (data) {
       stbi_image_free(data);
     }
   }
 
+  void open_image(const char* path, const std::uint8_t* rgb, int w, int h, int class_id)
+  {
+    m_path = path;
+
+    glBindTexture(GL_TEXTURE_2D, m_texture);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+  }
+
+  void on_image_select(const project& proj, std::size_t image_index) override
+  {
+    m_image_index = image_index;
+
+    if (image_index >= proj.frames.size()) {
+      std::array<std::uint8_t, 3> data{ 0, 0, 0 };
+      open_image("(none)", data.data(), 1, 1, 0);
+    } else {
+      open_image(proj.frames.at(image_index).path.string().c_str(), 0);
+    }
+  }
+
 protected:
-  static void on_label(image_viewer_impl& self, const int& label)
+  static void on_label(image_view_widget_impl& self, const int& label)
   {
     //
   }
 
-  static void on_crop(image_viewer_impl& self, const bbox<float, 2>& crop_bbox)
+  static void on_crop(image_view_widget_impl& self, const bbox<float, 2>& crop_bbox)
   {
     self.m_observer->on_crop_bbox_change(crop_bbox);
   }
 
-  void render_frame_label_selection(const project& prj)
+  void render_frame_label_selection(edit_moderator<project>& proj)
   {
-    const auto* current = prj.get_frame_class_id(m_class_id);
+    const auto* current = "";
+
+    auto at_valid_index = m_image_index < proj.get().frames.size();
+
+    if (m_image_index < proj.get().frames.size()) {
+
+      auto class_id = proj.get().frames.at(m_image_index).class_id;
+
+      current = class_id.has_value() ? proj.get().get_frame_class_id(class_id.value()) : "(none)";
+    }
+
+    ImGui::BeginDisabled(!at_valid_index);
 
     if (!ImGui::BeginCombo("Frame Label", current)) {
+      ImGui::EndDisabled();
       return;
     }
 
-    for (const auto& class_def_inst : prj.class_defs) {
+    for (const auto& class_def_inst : proj.get().class_defs) {
       if (ImGui::Selectable(class_def_inst.name.c_str())) {
-        m_class_id = class_def_inst.value;
+        proj.edit().frames.at(m_image_index).class_id = class_def_inst.value;
         m_observer->on_frame_class_id_change(m_path, class_def_inst.value);
       }
     }
 
     ImGui::EndCombo();
+
+    ImGui::EndDisabled();
   }
 
   void render_tools()
@@ -234,8 +271,6 @@ protected:
   }
 
 private:
-  int m_class_id{ 0 };
-
   std::string m_path;
 
   GLuint m_texture{};
@@ -244,13 +279,15 @@ private:
 
   std::size_t m_selected_tool{ 0 };
 
-  image_viewer_observer* m_observer{ nullptr };
+  image_view_observer* m_observer{ nullptr };
+
+  std::size_t m_image_index{ std::numeric_limits<std::size_t>::max() };
 };
 
 } // namespace
 
 auto
-image_viewer::create(image_viewer_observer* obs) -> std::unique_ptr<image_viewer>
+image_view_widget::create(image_view_observer* obs) -> std::unique_ptr<image_view_widget>
 {
-  return std::make_unique<image_viewer_impl>(obs);
+  return std::make_unique<image_view_widget_impl>(obs);
 }

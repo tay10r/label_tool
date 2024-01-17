@@ -16,7 +16,7 @@ protected:
 private:
   struct output_entry final
   {
-    int class_id;
+    int class_id{};
   };
 
   std::vector<output_entry> m_output_entries;

@@ -29,6 +29,8 @@ protected:
 
   virtual auto get_image_index() const -> std::size_t { return m_image_index; }
 
+  void move_to_next_frame();
+
 private:
   project m_project;
 
