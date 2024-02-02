@@ -6,6 +6,7 @@
 #include "edit_moderator.hpp"
 #include "exporter.hpp"
 #include "exporter_thread.hpp"
+#include "image_folder_exporter.hpp"
 #include "task_manager.hpp"
 #include "widget_manager.hpp"
 
@@ -225,6 +226,14 @@ protected:
     self->m_task_manager->queue(std::move(t), self, on_image_directory_import_complete);
   }
 
+  static void on_image_folder_export_directory(void* self_ptr, const char* directory_path)
+  {
+    auto* self = static_cast<app_impl*>(self_ptr);
+
+    self->m_exporter_thread.reset(new exporter_thread(
+      std::make_unique<image_folder_exporter>(self->m_state.proj.get(), std::filesystem::path(directory_path))));
+  }
+
   void save_project(const std::filesystem::path& project_path)
   {
     //
@@ -260,6 +269,10 @@ protected:
     ImGui::BeginDisabled(disabled);
 
     if (ImGui::BeginMenu("Export")) {
+
+      if (ImGui::Selectable("ImageFolder Format")) {
+        plt.open_directory_dialog("ImageFolder Output Directory", this, on_image_folder_export_directory);
+      }
 
       if (ImGui::Selectable("Builtin Format")) {
         m_exporter_thread.reset(new exporter_thread(std::make_unique<custom_exporter>(m_state.proj.get())));

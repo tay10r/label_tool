@@ -54,6 +54,8 @@ add_executable(label_tool WIN32
   src/exporter_thread.cpp
   src/exporter.hpp
   src/exporter.cpp
+  src/image_folder_exporter.hpp
+  src/image_folder_exporter.cpp
   src/custom_exporter.hpp
   src/custom_exporter.cpp
   src/bbox.hpp
