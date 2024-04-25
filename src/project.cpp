@@ -48,7 +48,7 @@ decode_bbox(const YAML::Node& node, bbox<T, Dim>& b)
 void
 project::load(const std::filesystem::path& p)
 {
-  const auto root = YAML::LoadFile(p);
+  const auto root = YAML::LoadFile(p.string());
 
   next_frame_id = root["next_frame_id"].as<int>();
 
@@ -198,7 +198,7 @@ void
 project::import_image_directory(const std::filesystem::path& p)
 {
   for (const auto& entry : std::filesystem::directory_iterator(p)) {
-    const std::string ext = entry.path().extension();
+    const std::string ext = entry.path().extension().string();
     if ((ext == ".png") || (ext == ".bmp") || (ext == ".jpg")) {
       import_image(entry.path());
     }

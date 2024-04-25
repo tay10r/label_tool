@@ -2,7 +2,7 @@
 
 #include <cstddef>
 
-class project;
+struct project;
 
 template<typename T>
 class edit_moderator;

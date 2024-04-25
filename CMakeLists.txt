@@ -68,6 +68,7 @@ add_executable(label_tool WIN32
   src/deps/stb_image_write.h
   src/deps/stb_image_write.c)
 target_link_libraries(label_tool PUBLIC uikit::uikit uikit::main yaml-cpp::yaml-cpp)
+target_compile_features(label_tool PUBLIC cxx_std_20)
 
 if(LABEL_TOOL_INSTALL)
 

@@ -16,7 +16,7 @@ public:
   virtual void on_frame_class_id_change(const std::string& path, int frame_class_id) = 0;
 };
 
-class project;
+struct project;
 
 class image_view_widget : public widget
 {
